@@ -65,7 +65,6 @@ function downloadExcel() {
   window.location.href = '/download-excel';
 }
 
-
 function loadStatistics() {
   fetch('/admin/view-table?table=votes')
     .then(res => res.json())
@@ -100,39 +99,50 @@ function loadStatistics() {
               .then(gamesData => {
                 const totalGames = gamesData.rows.length;
                 
-                // Load publishers count
-                fetch('/admin/view-table?table=publishers')
+                // Load 2026 games count
+                fetch('/admin/view-table?table=games_2026')
                   .then(res => res.json())
-                  .then(pubsData => {
-                    const totalPublishers = pubsData.rows.length;
+                  .then(games2026Data => {
+                    const totalGames2026 = games2026Data.rows.length;
                     
-                    const statsGrid = document.getElementById('stats-grid');
-                    statsGrid.innerHTML = `
-                      <div class="stat-item">
-                        <div class="stat-value">${uniqueVoters}</div>
-                        <div class="stat-label">عدد المصوتين</div>
-                      </div>
-                      <div class="stat-item">
-                        <div class="stat-value">${totalVotes}</div>
-                        <div class="stat-label">إجمالي التصويتات</div>
-                      </div>
-                      <div class="stat-item">
-                        <div class="stat-value">${uniqueSelections}</div>
-                        <div class="stat-label">عدد الألعاب/الاختيارات</div>
-                      </div>
-                      <div class="stat-item">
-                        <div class="stat-value">${totalCategories}</div>
-                        <div class="stat-label">عدد الفئات</div>
-                      </div>
-                      <div class="stat-item">
-                        <div class="stat-value">${totalGames}</div>
-                        <div class="stat-label">عدد الألعاب</div>
-                      </div>
-                      <div class="stat-item">
-                        <div class="stat-value">${totalPublishers}</div>
-                        <div class="stat-label">عدد الناشرين</div>
-                      </div>
-                    `;
+                    // Load publishers count
+                    fetch('/admin/view-table?table=publishers')
+                      .then(res => res.json())
+                      .then(pubsData => {
+                        const totalPublishers = pubsData.rows.length;
+                        
+                        const statsGrid = document.getElementById('stats-grid');
+                        statsGrid.innerHTML = `
+                          <div class="stat-item">
+                            <div class="stat-value">${uniqueVoters}</div>
+                            <div class="stat-label">عدد المصوتين</div>
+                          </div>
+                          <div class="stat-item">
+                            <div class="stat-value">${totalVotes}</div>
+                            <div class="stat-label">إجمالي التصويتات</div>
+                          </div>
+                          <div class="stat-item">
+                            <div class="stat-value">${uniqueSelections}</div>
+                            <div class="stat-label">عدد الألعاب/الاختيارات</div>
+                          </div>
+                          <div class="stat-item">
+                            <div class="stat-value">${totalCategories}</div>
+                            <div class="stat-label">عدد الفئات</div>
+                          </div>
+                          <div class="stat-item">
+                            <div class="stat-value">${totalGames}</div>
+                            <div class="stat-label">عدد الألعاب</div>
+                          </div>
+                          <div class="stat-item">
+                            <div class="stat-value">${totalGames2026}</div>
+                            <div class="stat-label">عدد ألعاب 2026</div>
+                          </div>
+                          <div class="stat-item">
+                            <div class="stat-value">${totalPublishers}</div>
+                            <div class="stat-label">عدد الناشرين</div>
+                          </div>
+                        `;
+                      });
                   });
               });
           });
@@ -179,6 +189,9 @@ function loadAdminTable(page = 1, scrollToTop = false) {
       thead.innerHTML = `<tr>${data.columns.map(col => `<th>${col}</th>`).join('')}<th>الإجراءات</th></tr>`;
       tbody.innerHTML = '';
 
+      // Update record count
+      updateRecordCount(data.total_rows || data.rows.length);
+
       // Render table rows
       if (data.rows.length === 0) {
         tbody.innerHTML = `
@@ -211,15 +224,35 @@ function loadAdminTable(page = 1, scrollToTop = false) {
               }
             }
             // Editable cells for categories
-            else if (currentTable === 'categories' && (data.columns[idx] === 'name_ar' || data.columns[idx] === 'name_en' || data.columns[idx] === 'description')) {
-              td.contentEditable = true;
-              td.className = 'admin-table-input editable-cell';
-              td.dataset.id = rowId;
-              td.dataset.col = data.columns[idx];
-              td.textContent = cell || '';
-              td.style.minWidth = '180px';
-              td.style.fontSize = '16px';
-              td.style.padding = '12px';
+            else if (currentTable === 'categories') {
+              if (data.columns[idx] === 'name_ar' || data.columns[idx] === 'name_en' || data.columns[idx] === 'description') {
+                td.contentEditable = true;
+                td.className = 'admin-table-input editable-cell';
+                td.dataset.id = rowId;
+                td.dataset.col = data.columns[idx];
+                td.textContent = cell || '';
+                td.style.minWidth = '180px';
+                td.style.fontSize = '16px';
+                td.style.padding = '12px';
+              }
+              else if (data.columns[idx] === 'display_order') {
+                // Display order - editable number input
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.value = cell;
+                input.className = 'admin-table-input';
+                input.style.width = '80px';
+                input.style.fontSize = '16px';
+                input.style.padding = '12px';
+                input.min = '0';
+                input.dataset.id = rowId;
+                input.dataset.col = data.columns[idx];
+                td.appendChild(input);
+                td.style.minWidth = '100px';
+              }
+              else {
+                td.textContent = cell;
+              }
             }
             // Handle votes table with category_name column
             else if (currentTable === 'votes') {
@@ -289,8 +322,8 @@ function loadAdminTable(page = 1, scrollToTop = false) {
                 td.style.fontSize = '14px';
               }
             }
-            // Editable cells for games and publishers (name field)
-            else if ((currentTable === 'games' || currentTable === 'publishers') && data.columns[idx] === 'name') {
+            // Editable cells for games, games_2026, and publishers (name field)
+            else if ((currentTable === 'games' || currentTable === 'games_2026' || currentTable === 'publishers') && data.columns[idx] === 'name') {
               td.contentEditable = true;
               td.className = 'admin-table-input editable-cell';
               td.dataset.id = rowId;
@@ -311,7 +344,7 @@ function loadAdminTable(page = 1, scrollToTop = false) {
           // Add actions cell
           const actionsTd = document.createElement('td');
           actionsTd.className = 'table-actions-container';
-          actionsTd.style.minWidth = '200px';
+          actionsTd.style.minWidth = '220px';
           actionsTd.style.whiteSpace = 'nowrap';
           
           if (currentTable === 'categories') {
@@ -358,7 +391,7 @@ function loadAdminTable(page = 1, scrollToTop = false) {
             saveBtn.style.padding = '10px 15px';
             saveBtn.style.margin = '2px';
             saveBtn.innerHTML = '<i class="fas fa-save"></i> حفظ';
-            saveBtn.onclick = () => saveGameEdit(rowId, saveBtn);
+            saveBtn.onclick = () => saveGameEdit(rowId, saveBtn, 'game');
             
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'btn-submit';
@@ -367,6 +400,25 @@ function loadAdminTable(page = 1, scrollToTop = false) {
             deleteBtn.style.background = 'linear-gradient(135deg, #F44336, #D32F2F)';
             deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i> حذف';
             deleteBtn.onclick = () => deleteRow('game', rowId, currentPage);
+            
+            actionsTd.appendChild(saveBtn);
+            actionsTd.appendChild(deleteBtn);
+          }
+          else if (currentTable === 'games_2026') {
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'btn-primary';
+            saveBtn.style.padding = '10px 15px';
+            saveBtn.style.margin = '2px';
+            saveBtn.innerHTML = '<i class="fas fa-save"></i> حفظ';
+            saveBtn.onclick = () => saveGameEdit(rowId, saveBtn, 'game-2026');
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-submit';
+            deleteBtn.style.padding = '10px 15px';
+            deleteBtn.style.margin = '2px';
+            deleteBtn.style.background = 'linear-gradient(135deg, #F44336, #D32F2F)';
+            deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i> حذف';
+            deleteBtn.onclick = () => deleteRow('game-2026', rowId, currentPage);
             
             actionsTd.appendChild(saveBtn);
             actionsTd.appendChild(deleteBtn);
@@ -480,8 +532,7 @@ function loadAdminTable(page = 1, scrollToTop = false) {
     });
 }
 
-
-// Save Edited Category
+// Save Edited Category (updated with display_order)
 function saveCategoryEdit(id, btn) {
   const tr = document.getElementById(`row-${id}`);
   if (!tr) {
@@ -492,6 +543,8 @@ function saveCategoryEdit(id, btn) {
   const nameAr = tr.querySelector('[data-col="name_ar"]')?.textContent.trim();
   const nameEn = tr.querySelector('[data-col="name_en"]')?.textContent.trim();
   const description = tr.querySelector('[data-col="description"]')?.textContent.trim();
+  const displayOrderInput = tr.querySelector('input[data-col="display_order"]');
+  const displayOrder = displayOrderInput ? parseInt(displayOrderInput.value) : 0;
   
   if (!nameAr || !nameEn) {
     showToast("❗ اسم الفئة (عربي/إنجليزي) لا يمكن أن يكون فارغاً", false);
@@ -509,7 +562,8 @@ function saveCategoryEdit(id, btn) {
     body: JSON.stringify({ 
       name_ar: nameAr,
       name_en: nameEn,
-      description: description 
+      description: description,
+      display_order: displayOrder
     })
   })
   .then(res => res.json())
@@ -528,6 +582,15 @@ function saveCategoryEdit(id, btn) {
           cell.style.border = '';
         }, 1500);
       });
+      
+      if (displayOrderInput) {
+        displayOrderInput.style.backgroundColor = 'rgba(76, 175, 80, 0.2)';
+        displayOrderInput.style.border = '2px solid #4CAF50';
+        setTimeout(() => {
+          displayOrderInput.style.backgroundColor = '';
+          displayOrderInput.style.border = '';
+        }, 1500);
+      }
       
       // Reload table but stay on same page
       loadAdminTable(currentPage);
@@ -551,8 +614,8 @@ function saveCategoryEdit(id, btn) {
   });
 }
 
-// Save Edited Game
-function saveGameEdit(id, btn) {
+// Save Edited Game (for both regular games and 2026 games)
+function saveGameEdit(id, btn, type = 'game') {
   const tr = document.getElementById(`row-${id}`);
   if (!tr) {
     showToast("❌ لم يتم العثور على الصف", false);
@@ -572,7 +635,9 @@ function saveGameEdit(id, btn) {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...';
   btn.disabled = true;
   
-  fetch(`/admin/game/${id}`, {
+  const endpoint = type === 'game-2026' ? `/admin/game-2026/${id}` : `/admin/game/${id}`;
+  
+  fetch(endpoint, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: newName })
@@ -580,7 +645,8 @@ function saveGameEdit(id, btn) {
   .then(res => res.json())
   .then(data => {
     if (data.status === 'success') {
-      showToast("✅ تم تعديل اللعبة بنجاح", true);
+      const message = type === 'game-2026' ? "تم تعديل لعبة 2026 بنجاح" : "تم تعديل اللعبة بنجاح";
+      showToast(`✅ ${message}`, true);
       
       // Visual feedback
       if (nameCell) {
@@ -597,13 +663,15 @@ function saveGameEdit(id, btn) {
       loadAdminTable(currentPage);
       
     } else {
-      showToast("❌ فشل تعديل اللعبة", false);
+      const errorMsg = type === 'game-2026' ? "فشل تعديل لعبة 2026" : "فشل تعديل اللعبة";
+      showToast(`❌ ${errorMsg}`, false);
       loadAdminTable(currentPage);
     }
   })
   .catch(error => {
     console.error('Error editing game:', error);
-    showToast("❌ حدث خطأ أثناء تعديل اللعبة", false);
+    const errorMsg = type === 'game-2026' ? "حدث خطأ أثناء تعديل لعبة 2026" : "حدث خطأ أثناء تعديل اللعبة";
+    showToast(`❌ ${errorMsg}`, false);
     loadAdminTable(currentPage);
   })
   .finally(() => {
@@ -673,11 +741,13 @@ function savePublisherEdit(id, btn) {
   });
 }
 
-// Add New Category
+// Add New Category (updated with display_order)
 function addCategory() {
   const nameAr = document.getElementById('category-name-ar').value.trim();
   const nameEn = document.getElementById('category-name-en').value.trim();
   const description = document.getElementById('category-description').value.trim();
+  const displayOrderInput = document.getElementById('category-display-order');
+  const displayOrder = displayOrderInput ? parseInt(displayOrderInput.value) : 0;
   
   if (!nameAr || !nameEn) {
     showToast("❗ الرجاء إدخال اسم الفئة (عربي وإنجليزي)", false);
@@ -693,7 +763,8 @@ function addCategory() {
     body: JSON.stringify({ 
       name_ar: nameAr,
       name_en: nameEn,
-      description: description 
+      description: description,
+      display_order: displayOrder
     })
   })
   .then(res => res.json())
@@ -703,6 +774,7 @@ function addCategory() {
       document.getElementById('category-name-ar').value = '';
       document.getElementById('category-name-en').value = '';
       document.getElementById('category-description').value = '';
+      if (displayOrderInput) displayOrderInput.value = '0';
       
       // Reload table but stay on same page and restore scroll position
       loadAdminTable(currentPage);
@@ -762,6 +834,49 @@ function addGame() {
   .catch(error => {
     console.error('Error adding game:', error);
     showToast("❌ حدث خطأ أثناء إضافة اللعبة", false);
+  });
+}
+
+// Add New 2026 Game
+function addGame2026() {
+  const nameInput = document.getElementById('game-2026-name');
+  const name = nameInput ? nameInput.value.trim() : '';
+  
+  if (!name) {
+    showToast("❗ الرجاء إدخال اسم لعبة 2026", false);
+    return;
+  }
+
+  // Store current scroll position
+  const scrollPosition = window.scrollY;
+  
+  fetch('/admin/game-2026', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'success') {
+      showToast("✅ تمت إضافة لعبة 2026 بنجاح", true);
+      if (nameInput) nameInput.value = '';
+      
+      // Reload table but stay on same page and restore scroll position
+      loadAdminTable(currentPage);
+      loadStatistics();
+      
+      // Restore scroll position after a short delay
+      setTimeout(() => {
+        window.scrollTo(0, scrollPosition);
+      }, 100);
+      
+    } else {
+      showToast("❌ فشل إضافة لعبة 2026", false);
+    }
+  })
+  .catch(error => {
+    console.error('Error adding 2026 game:', error);
+    showToast("❌ حدث خطأ أثناء إضافة لعبة 2026", false);
   });
 }
 
@@ -895,6 +1010,7 @@ function deleteRow(type, id, pageToStayOn = 1) {
     'vote': "⚠️ هل أنت متأكد من حذف هذا التصويت؟\n\nهذا الإجراء لا يمكن التراجع عنه.",
     'category': "⚠️ هل أنت متأكد من حذف هذه الفئة؟\n\nملاحظة: لا يمكن حذف فئة تحتوي على تصويتات.",
     'game': "⚠️ هل أنت متأكد من حذف هذه اللعبة؟\n\nهذا الإجراء لا يمكن التراجع عنه.",
+    'game-2026': "⚠️ هل أنت متأكد من حذف لعبة 2026 هذه؟\n\nهذا الإجراء لا يمكن التراجع عنه.",
     'publisher': "⚠️ هل أنت متأكد من حذف هذا الناشر؟\n\nهذا الإجراء لا يمكن التراجع عنه."
   };
   
@@ -902,6 +1018,7 @@ function deleteRow(type, id, pageToStayOn = 1) {
     'vote': `/admin/vote/${id}`,
     'category': `/admin/category/${id}`,
     'game': `/admin/game/${id}`,
+    'game-2026': `/admin/game-2026/${id}`,
     'publisher': `/admin/publisher/${id}`
   };
   
@@ -912,6 +1029,11 @@ function deleteRow(type, id, pageToStayOn = 1) {
   // Store current scroll position before deleting
   const scrollPosition = window.scrollY;
   const endpoint = endpointMap[type];
+  
+  if (!endpoint) {
+    showToast("❌ نوع الحذف غير معروف", false);
+    return;
+  }
   
   fetch(endpoint, { method: 'DELETE' })
     .then(res => res.json())
@@ -987,6 +1109,14 @@ document.addEventListener('keypress', function(e) {
   }
 });
 
+// Function to update record count
+function updateRecordCount(count) {
+  const recordCountElement = document.getElementById('record-count');
+  if (recordCountElement) {
+    recordCountElement.textContent = count;
+  }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
   // Focus on password input
@@ -1008,7 +1138,9 @@ document.addEventListener('DOMContentLoaded', function() {
     '#category-name-ar, ' +
     '#category-name-en, ' +
     '#category-description, ' +
+    '#category-display-order, ' +
     '#game-name, ' +
+    '#game-2026-name, ' +
     '#publisher-name'
   );
   
