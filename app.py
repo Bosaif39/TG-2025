@@ -596,14 +596,10 @@ def check_vote():
 def submit_vote():
     data = request.get_json()
     name = sanitize_input(data.get('name', ''))
-    votes_by_category = data.get('votes', {})  # Changed structure: {category_id: [selections]}
+    votes_by_category = data.get('votes', {})
     
     if not name:
         return jsonify({'status': 'error', 'message': 'Name is required'}), 400
-    
-    # Validate votes structure
-    if not isinstance(votes_by_category, dict):
-        return jsonify({'status': 'error', 'message': 'Invalid votes format'}), 400
     
     try:
         with get_conn() as conn:
@@ -616,46 +612,103 @@ def submit_vote():
                     
                     # Process votes for each category
                     for category_id, selections in votes_by_category.items():
+                        cat_id = int(category_id)
+                        
                         # Check if this is "Best Games 2025" category (category_id = 9)
-                        if str(category_id) == '9':
-                            # Best Games category requires at least 3 selections (top 3 are mandatory)
+                        if cat_id == 9:
+                            # Best Games category requires at least 3 selections
                             if not isinstance(selections, list) or len(selections) != 5:
-                                return jsonify({'status': 'error', 'message': f'فئة "أفضل ألعاب 2025" تحتاج لاختيار 5 مراكز (3 مطلوبة)'}), 400
+                                return jsonify({'status': 'error', 'message': 'فئة "أفضل ألعاب 2025" تحتاج لاختيار 5 مراكز (3 مطلوبة)'}), 400
                             
-                            # Check that top 3 positions are filled
+                            # Check top 3 positions
                             for i in range(3):
                                 selection = sanitize_input(selections[i])
                                 if not selection:
-                                    return jsonify({'status': 'error', 'message': f'اللعبة في المركز {i+1} مطلوبة ولا يمكن أن تكون فارغة'}), 400
+                                    return jsonify({'status': 'error', 'message': f'اللعبة في المركز {i+1} مطلوبة'}), 400
                             
-                            # Insert votes for Best Games category with rankings
+                            # Insert votes for Best Games category
                             for rank, selection in enumerate(selections, start=1):
                                 selection = sanitize_input(selection)
                                 
-                                # Skip empty optional positions (4 and 5)
+                                # Skip empty optional positions
                                 if rank >= 4 and not selection:
                                     continue
+                                
+                                # ✅ AUTO-ADD NEW GAME TO games TABLE
+                                if selection:
+                                    cur.execute("""
+                                        INSERT INTO games (name) 
+                                        VALUES (%s)
+                                        ON CONFLICT (name) DO NOTHING
+                                    """, (selection,))
                                 
                                 points = POINT_SYSTEM.get(rank, 0)
                                 cur.execute("""
                                     INSERT INTO votes (voter_name, category_id, rank, selection, points)
                                     VALUES (%s, %s, %s, %s, %s)
-                                """, (name, int(category_id), rank, selection, points))
-                        else:
-                            # Other categories - selection is optional
+                                """, (name, cat_id, rank, selection, points))
+                        
+                        # Category 8: Most Anticipated 2026
+                        elif cat_id == 8:
+                            # Single selection
                             if not isinstance(selections, list) or len(selections) != 1:
-                                return jsonify({'status': 'error', 'message': f'الفئة {category_id} تحتاج لاختيار واحد فقط'}), 400
+                                return jsonify({'status': 'error', 'message': f'الفئة {cat_id} تحتاج لاختيار واحد فقط'}), 400
                             
-                            # Insert vote for other categories only if selection is provided
                             selection = sanitize_input(selections[0])
                             if selection:
-                                # For single selection categories, use rank 1 and points 5
+                                # ✅ AUTO-ADD NEW GAME TO games_2026 TABLE
+                                cur.execute("""
+                                    INSERT INTO games_2026 (name) 
+                                    VALUES (%s)
+                                    ON CONFLICT (name) DO NOTHING
+                                """, (selection,))
+                                
                                 cur.execute("""
                                     INSERT INTO votes (voter_name, category_id, rank, selection, points)
                                     VALUES (%s, %s, 1, %s, 5)
-                                """, (name, int(category_id), selection))
+                                """, (name, cat_id, selection))
+                        
+                        # Category 5: Best Publisher
+                        elif cat_id == 5:
+                            # Single selection
+                            if not isinstance(selections, list) or len(selections) != 1:
+                                return jsonify({'status': 'error', 'message': f'الفئة {cat_id} تحتاج لاختيار واحد فقط'}), 400
+                            
+                            selection = sanitize_input(selections[0])
+                            if selection:
+                                # ✅ AUTO-ADD NEW PUBLISHER TO publishers TABLE
+                                cur.execute("""
+                                    INSERT INTO publishers (name) 
+                                    VALUES (%s)
+                                    ON CONFLICT (name) DO NOTHING
+                                """, (selection,))
+                                
+                                cur.execute("""
+                                    INSERT INTO votes (voter_name, category_id, rank, selection, points)
+                                    VALUES (%s, %s, 1, %s, 5)
+                                """, (name, cat_id, selection))
+                        
+                        # Other categories (game categories)
+                        else:
+                            # Single selection
+                            if not isinstance(selections, list) or len(selections) != 1:
+                                return jsonify({'status': 'error', 'message': f'الفئة {cat_id} تحتاج لاختيار واحد فقط'}), 400
+                            
+                            selection = sanitize_input(selections[0])
+                            if selection:
+                                # ✅ AUTO-ADD NEW GAME TO games TABLE
+                                cur.execute("""
+                                    INSERT INTO games (name) 
+                                    VALUES (%s)
+                                    ON CONFLICT (name) DO NOTHING
+                                """, (selection,))
+                                
+                                cur.execute("""
+                                    INSERT INTO votes (voter_name, category_id, rank, selection, points)
+                                    VALUES (%s, %s, 1, %s, 5)
+                                """, (name, cat_id, selection))
             else:
-                # SQLite
+                # SQLite version (similar logic)
                 # Check if user already voted
                 cursor = conn.execute("SELECT 1 FROM votes WHERE voter_name=? LIMIT 1", (name,))
                 if cursor.fetchone():
@@ -663,44 +716,90 @@ def submit_vote():
                 
                 # Process votes for each category
                 for category_id, selections in votes_by_category.items():
-                    # Check if this is "Best Games 2025" category (category_id = 9)
-                    if str(category_id) == '9':
-                        # Best Games category requires at least 3 selections (top 3 are mandatory)
+                    cat_id = int(category_id)
+                    
+                    if cat_id == 9:
+                        # Best Games 2025
                         if not isinstance(selections, list) or len(selections) != 5:
-                            return jsonify({'status': 'error', 'message': f'فئة "أفضل ألعاب 2025" تحتاج لاختيار 5 مراكز (3 مطلوبة)'}), 400
+                            return jsonify({'status': 'error', 'message': 'فئة "أفضل ألعاب 2025" تحتاج لاختيار 5 مراكز (3 مطلوبة)'}), 400
                         
-                        # Check that top 3 positions are filled
                         for i in range(3):
                             selection = sanitize_input(selections[i])
                             if not selection:
-                                return jsonify({'status': 'error', 'message': f'اللعبة في المركز {i+1} مطلوبة ولا يمكن أن تكون فارغة'}), 400
+                                return jsonify({'status': 'error', 'message': f'اللعبة في المركز {i+1} مطلوبة'}), 400
                         
-                        # Insert votes for Best Games category with rankings
                         for rank, selection in enumerate(selections, start=1):
                             selection = sanitize_input(selection)
                             
-                            # Skip empty optional positions (4 and 5)
                             if rank >= 4 and not selection:
                                 continue
+                            
+                            # ✅ AUTO-ADD NEW GAME TO games TABLE (SQLite)
+                            if selection:
+                                conn.execute("""
+                                    INSERT OR IGNORE INTO games (name) 
+                                    VALUES (?)
+                                """, (selection,))
                             
                             points = POINT_SYSTEM.get(rank, 0)
                             conn.execute("""
                                 INSERT INTO votes (voter_name, category_id, rank, selection, points)
                                 VALUES (?, ?, ?, ?, ?)
-                            """, (name, int(category_id), rank, selection, points))
-                    else:
-                        # Other categories - selection is optional
+                            """, (name, cat_id, rank, selection, points))
+                    
+                    elif cat_id == 8:
+                        # Most Anticipated 2026
                         if not isinstance(selections, list) or len(selections) != 1:
-                            return jsonify({'status': 'error', 'message': f'الفئة {category_id} تحتاج لاختيار واحد فقط'}), 400
+                            return jsonify({'status': 'error', 'message': f'الفئة {cat_id} تحتاج لاختيار واحد فقط'}), 400
                         
-                        # Insert vote for other categories only if selection is provided
                         selection = sanitize_input(selections[0])
                         if selection:
-                            # For single selection categories, use rank 1 and points 5
+                            # ✅ AUTO-ADD NEW GAME TO games_2026 TABLE
+                            conn.execute("""
+                                INSERT OR IGNORE INTO games_2026 (name) 
+                                VALUES (?)
+                            """, (selection,))
+                            
                             conn.execute("""
                                 INSERT INTO votes (voter_name, category_id, rank, selection, points)
                                 VALUES (?, ?, 1, ?, 5)
-                            """, (name, int(category_id), selection))
+                            """, (name, cat_id, selection))
+                    
+                    elif cat_id == 5:
+                        # Best Publisher
+                        if not isinstance(selections, list) or len(selections) != 1:
+                            return jsonify({'status': 'error', 'message': f'الفئة {cat_id} تحتاج لاختيار واحد فقط'}), 400
+                        
+                        selection = sanitize_input(selections[0])
+                        if selection:
+                            # ✅ AUTO-ADD NEW PUBLISHER
+                            conn.execute("""
+                                INSERT OR IGNORE INTO publishers (name) 
+                                VALUES (?)
+                            """, (selection,))
+                            
+                            conn.execute("""
+                                INSERT INTO votes (voter_name, category_id, rank, selection, points)
+                                VALUES (?, ?, 1, ?, 5)
+                            """, (name, cat_id, selection))
+                    
+                    else:
+                        # Other game categories
+                        if not isinstance(selections, list) or len(selections) != 1:
+                            return jsonify({'status': 'error', 'message': f'الفئة {cat_id} تحتاج لاختيار واحد فقط'}), 400
+                        
+                        selection = sanitize_input(selections[0])
+                        if selection:
+                            # ✅ AUTO-ADD NEW GAME
+                            conn.execute("""
+                                INSERT OR IGNORE INTO games (name) 
+                                VALUES (?)
+                            """, (selection,))
+                            
+                            conn.execute("""
+                                INSERT INTO votes (voter_name, category_id, rank, selection, points)
+                                VALUES (?, ?, 1, ?, 5)
+                            """, (name, cat_id, selection))
             
             conn.commit()
             
